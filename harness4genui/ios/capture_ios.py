@@ -185,6 +185,36 @@ def find_in_tab_bar(udid, els, want="Search"):
     return None
 
 
+
+def probe_grid(udid, outdir, tag, width=402, height=874):
+    """Sweep the screen with describe-point and record every distinct element found.
+
+    Necessary because idb's describe-all does NOT return the complete tree: on the Wikipedia
+    iOS search screen it omits the search field entirely, both before and after focus, even
+    though describe-point at that location reports
+    type='TextField' AXLabel='Search Wikipedia'. Building the iOS surface from describe-all
+    alone would therefore report a meaning as absent that is plainly present. Both queries come
+    from the same idb accessibility API; the sweep is simply the exhaustive one.
+    """
+    seen, found = set(), []
+    for y in range(40, int(height), 24):
+        for x in (int(width * f) for f in (0.15, 0.5, 0.85)):
+            typ, lab = describe_point_full(udid, x, y)
+            if not typ and not lab:
+                continue
+            key = (typ, lab)
+            if key in seen:
+                continue
+            seen.add(key)
+            found.append({"type": typ, "AXLabel": lab, "x": x, "y": y})
+    Path(outdir, f"ios-{tag}-probes.json").write_text(
+        json.dumps(found, indent=1), encoding="utf-8")
+    print(f"  {tag} probe sweep: {len(found)} distinct elements")
+    for f in found:
+        print(f"     {f['type']:<16} {f['AXLabel'][:44]!r}")
+    return found
+
+
 def main():
     udid, outdir = sys.argv[1], sys.argv[2]
     bundle_id = sys.argv[3] if len(sys.argv) > 3 else "org.wikimedia.wikipedia"
@@ -250,6 +280,7 @@ def main():
                             str(int(width / 2)), str(y)], capture_output=True, text=True)
             time.sleep(3)
             describe(udid, outdir, "search-active")
+            probe_grid(udid, outdir, "search-active")
             return 0
     print("  search field not found by probing; search dump captured without focus")
     return 0
