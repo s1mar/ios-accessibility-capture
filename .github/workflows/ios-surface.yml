@@ -1,0 +1,75 @@
+# .github/workflows/ios-surface.yml
+name: ios-surface
+
+on:
+  workflow_dispatch:
+    inputs:
+      device:
+        description: Simulator device name
+        default: "iPhone 16"
+
+jobs:
+  capture:
+    runs-on: macos-15
+    timeout-minutes: 90
+    steps:
+      - name: Check out this repo
+        uses: actions/checkout@v4
+
+      - name: Check out Wikipedia iOS
+        uses: actions/checkout@v4
+        with:
+          repository: wikimedia/wikipedia-ios
+          path: wikipedia-ios
+
+      - name: Environment
+        run: |
+          xcodebuild -version
+          xcrun simctl list runtimes
+
+      - name: List schemes
+        working-directory: wikipedia-ios
+        run: xcodebuild -list -project Wikipedia.xcodeproj
+
+      - name: Boot simulator
+        id: sim
+        run: |
+          UDID=$(xcrun simctl list devices available | grep -m1 -E "iPhone" | sed -E 's/.*\(([0-9A-F-]{36})\).*/\1/')
+          echo "using simulator $UDID"
+          echo "udid=$UDID" >> "$GITHUB_OUTPUT"
+          xcrun simctl boot "$UDID" || true
+          xcrun simctl bootstatus "$UDID" -b || true
+
+      - name: Build for simulator
+        working-directory: wikipedia-ios
+        run: |
+          set -o pipefail
+          xcodebuild -project Wikipedia.xcodeproj -scheme Wikipedia -configuration Debug \
+            -destination "id=${{ steps.sim.outputs.udid }}" -derivedDataPath ../dd \
+            CODE_SIGNING_ALLOWED=NO build 2>&1 | tail -80
+
+      - name: Install and launch
+        run: |
+          APP=$(find dd/Build/Products -maxdepth 2 -name "*.app" | head -1)
+          echo "app bundle: $APP"
+          xcrun simctl install "${{ steps.sim.outputs.udid }}" "$APP"
+          BID=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP/Info.plist")
+          echo "bundle id: $BID"
+          xcrun simctl launch "${{ steps.sim.outputs.udid }}" "$BID"
+          sleep 25
+
+      - name: Install idb
+        run: |
+          brew tap facebook/fb
+          brew install idb-companion
+          python3 -m pip install --break-system-packages --upgrade fb-idb
+
+      - name: Capture accessibility trees
+        run: python3 harness4genui/ios/capture_ios.py "${{ steps.sim.outputs.udid }}" out
+
+      - name: Upload
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-surface
+          path: out/
