@@ -117,6 +117,55 @@ def relaunch(udid, bundle_id, want="Wikipedia"):
     return False
 
 
+
+def describe_point(udid, x, y):
+    """What is at this screen point? Returns the AXLabel, or ''. """
+    r = subprocess.run(["idb", "ui", "describe-point", "--udid", udid,
+                        str(int(x)), str(int(y)), "--json"],
+                       capture_output=True, text=True)
+    if r.returncode != 0:
+        return ""
+    try:
+        d = json.loads(r.stdout.strip() or "{}")
+    except json.JSONDecodeError:
+        return ""
+    if isinstance(d, list):
+        d = d[0] if d else {}
+    return (d.get("AXLabel") or d.get("title") or "").strip()
+
+
+def find_in_tab_bar(udid, els, want="Search"):
+    """Locate a tab by ACCESSIBLE LABEL inside a tab bar whose children the flat dump omits.
+
+    idb's describe-all returned the Tab Bar container but not its individual tabs, so the tab
+    cannot be found by scanning the dump. Rather than guess a coordinate, probe each slot with
+    describe-point and match on the label, keeping the same addressing discipline the contract
+    uses.
+    """
+    bar = None
+    for e in els:
+        if (e.get("AXLabel") or "").strip() == "Tab Bar":
+            bar = e
+            break
+    if bar is None:
+        return None
+    f = bar.get("frame") or {}
+    x0, y0 = f.get("x", 0), f.get("y", 0)
+    w, h = f.get("width", 0), f.get("height", 0)
+    if not w or not h:
+        return None
+    y = y0 + h * 0.4
+    for slots in (5, 4, 6):
+        for i in range(slots):
+            x = x0 + w * (i + 0.5) / slots
+            label = describe_point(udid, x, y)
+            if label:
+                print(f"    tab probe {slots}/{i}: {label!r}")
+            if label and want.lower() in label.lower():
+                return (x, y)
+    return None
+
+
 def main():
     udid, outdir = sys.argv[1], sys.argv[2]
     bundle_id = sys.argv[3] if len(sys.argv) > 3 else "org.wikimedia.wikipedia"
@@ -140,11 +189,17 @@ def main():
         els = describe(udid, outdir, "launch")
 
     s = find(els, "Search")
-    if s is None:
-        print("  no Search control found; launch dump captured, stopping here")
-        return 0
-
-    tap(udid, s)
+    if s is not None:
+        tap(udid, s)
+    else:
+        pt = find_in_tab_bar(udid, els, "Search")
+        if pt is None:
+            print("  no Search control found in the dump or the tab bar; stopping here")
+            return 0
+        print(f"  tapping Search tab at {pt}")
+        subprocess.run(["idb", "ui", "tap", "--udid", udid,
+                        str(int(pt[0])), str(int(pt[1]))], capture_output=True, text=True)
+        time.sleep(3)
     els = describe(udid, outdir, "search")
 
     # Dismiss anything that appeared on the search screen, then focus the field.
