@@ -95,10 +95,15 @@ jobs:
           sleep 25
 
       - name: Install idb
+        env:
+          # Homebrew now refuses formulae from third-party taps unless the tap is allow-listed:
+          # "Refusing to load formula facebook/fb/idb-companion from untrusted tap facebook/fb".
+          HOMEBREW_ALLOWED_TAPS: facebook/fb
         run: |
           brew tap facebook/fb
-          brew install idb-companion
+          brew install facebook/fb/idb-companion
           python3 -m pip install --break-system-packages --upgrade fb-idb
+          idb --help > /dev/null && echo "idb available"
 
       - name: Capture accessibility trees
         run: python3 harness4genui/ios/capture_ios.py "${{ steps.sim.outputs.udid }}" out
