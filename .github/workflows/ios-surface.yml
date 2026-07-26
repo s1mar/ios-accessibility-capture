@@ -25,6 +25,8 @@ jobs:
       - name: Environment
         run: |
           xcodebuild -version
+          echo "--- available Xcodes ---"
+          ls /Applications | grep -i '^Xcode' || true
           xcrun simctl list runtimes
 
       - name: Generate the open-source build configuration
@@ -53,10 +55,24 @@ jobs:
       - name: Build for simulator
         working-directory: wikipedia-ios
         run: |
-          set -o pipefail
-          xcodebuild -project Wikipedia.xcodeproj -scheme Wikipedia -configuration Debug \
-            -destination "id=${{ steps.sim.outputs.udid }}" -derivedDataPath ../dd \
-            CODE_SIGNING_ALLOWED=NO build 2>&1 | tail -80
+          # Capture the FULL log to a file and surface only compiler diagnostics.
+          # An earlier run piped to `tail`, which discarded the one line that mattered.
+          set +e
+          xcodebuild -project Wikipedia.xcodeproj -scheme Wikipedia -configuration Debug             -destination "id=${{ steps.sim.outputs.udid }}" -derivedDataPath ../dd             CODE_SIGNING_ALLOWED=NO build > ../build.log 2>&1
+          RC=$?
+          echo "xcodebuild exit=$RC"
+          echo "============ compiler diagnostics ============"
+          grep -E "(error|warning): " ../build.log | sort -u | head -60 || true
+          echo "============ last 40 lines ==================="
+          tail -40 ../build.log
+          exit $RC
+
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log
+          path: build.log
 
       - name: Install and launch
         run: |
