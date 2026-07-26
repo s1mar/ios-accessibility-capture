@@ -220,10 +220,12 @@ def main():
     app = next((e for e in els if e.get("type") == "Application"), None)
     width = ((app or {}).get("frame") or {}).get("width", 402)
     for y in range(60, 260, 20):
-        label = describe_point(udid, width / 2, y)
-        if label:
-            print(f"    top probe y={y}: {label!r}")
-        if label and "search" in label.lower():
+        # NB: do not name this `label`. That shadows the module-level label() function for the
+        # whole of main(), and the earlier label(b) call then dies with UnboundLocalError.
+        lab = describe_point(udid, width / 2, y)
+        if lab:
+            print(f"    top probe y={y}: {lab!r}")
+        if lab and "search" in lab.lower():
             print(f"  tapping search field at (({width/2}, {y}))")
             subprocess.run(["idb", "ui", "tap", "--udid", udid,
                             str(int(width / 2)), str(y)], capture_output=True, text=True)
