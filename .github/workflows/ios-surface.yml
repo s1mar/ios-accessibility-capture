@@ -65,10 +65,15 @@ jobs:
       - name: Build for simulator
         working-directory: wikipedia-ios
         run: |
+          # Ad-hoc sign (CODE_SIGN_IDENTITY="-") rather than disabling signing. With
+          # CODE_SIGNING_ALLOWED=NO the App Group entitlement is stripped, so at runtime
+          # containerURL(forSecurityApplicationGroupIdentifier:) returns nil and MWKDataStore
+          # crashes in setupLegacyDataStore -> NSURL fileURLWithPath: with a nil path. The app
+          # then dies instantly while simctl launch still reports success.
           # Capture the FULL log to a file and surface only compiler diagnostics.
           # An earlier run piped to `tail`, which discarded the one line that mattered.
           set +e
-          xcodebuild -project Wikipedia.xcodeproj -scheme Wikipedia -configuration Debug             -destination "id=${{ steps.sim.outputs.udid }}" -derivedDataPath ../dd             CODE_SIGNING_ALLOWED=NO build > ../build.log 2>&1
+          xcodebuild -project Wikipedia.xcodeproj -scheme Wikipedia -configuration Debug             -destination "id=${{ steps.sim.outputs.udid }}" -derivedDataPath ../dd             CODE_SIGNING_ALLOWED=YES CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="-"             build > ../build.log 2>&1
           RC=$?
           echo "xcodebuild exit=$RC"
           echo "============ compiler diagnostics ============"
