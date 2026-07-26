@@ -91,8 +91,9 @@ jobs:
           xcrun simctl install "${{ steps.sim.outputs.udid }}" "$APP"
           BID=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP/Info.plist")
           echo "bundle id: $BID"
+          echo "BID=$BID" >> "$GITHUB_ENV"
           xcrun simctl launch "${{ steps.sim.outputs.udid }}" "$BID"
-          sleep 25
+          sleep 15
 
       - name: Python 3.10 for idb
         uses: actions/setup-python@v5
@@ -116,7 +117,7 @@ jobs:
           python -c "import sys; print('idb python', sys.version)"
 
       - name: Capture accessibility trees
-        run: python3 harness4genui/ios/capture_ios.py "${{ steps.sim.outputs.udid }}" out
+        run: python3 harness4genui/ios/capture_ios.py "${{ steps.sim.outputs.udid }}" out "$BID"
 
       - name: Upload
         if: always()

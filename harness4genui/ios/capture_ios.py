@@ -67,9 +67,39 @@ def tap(udid, el):
     time.sleep(3)
 
 
+def relaunch(udid, bundle_id):
+    """Bring the app to the foreground and wait for a real tree.
+
+    idb describes the FRONTMOST application. Several minutes elapse between the workflow's
+    launch step and this one while Homebrew and Python install, by which point the app is no
+    longer foreground and describe-all returns a single empty node. So relaunch here, and poll
+    until the tree is actually populated rather than trusting a fixed sleep.
+    """
+    subprocess.run(["xcrun", "simctl", "terminate", udid, bundle_id],
+                   capture_output=True, text=True)
+    time.sleep(2)
+    subprocess.run(["xcrun", "simctl", "launch", udid, bundle_id],
+                   capture_output=True, text=True)
+    for attempt in range(20):
+        time.sleep(5)
+        r = subprocess.run(["idb", "ui", "describe-all", "--udid", udid, "--json"],
+                           capture_output=True, text=True)
+        n = r.stdout.count('"AXFrame"')
+        print(f"  wait {attempt}: {n} nodes")
+        if n > 1:
+            return True
+    return False
+
+
 def main():
     udid, outdir = sys.argv[1], sys.argv[2]
+    bundle_id = sys.argv[3] if len(sys.argv) > 3 else "org.wikimedia.wikipedia"
     Path(outdir).mkdir(parents=True, exist_ok=True)
+
+    if not relaunch(udid, bundle_id):
+        print("  app never produced a populated accessibility tree")
+        describe(udid, outdir, "launch")
+        return 1
 
     els = describe(udid, outdir, "launch")
 
