@@ -118,6 +118,25 @@ def relaunch(udid, bundle_id, want="Wikipedia"):
 
 
 
+def describe_point_full(udid, x, y):
+    """Return (type, AXLabel) at a screen point, so an UNLABELLED control is distinguishable
+    from no control at all. Reporting only the label made an unnamed search field look like an
+    empty region."""
+    r = subprocess.run(["idb", "ui", "describe-point", "--udid", udid,
+                        str(int(x)), str(int(y)), "--json"],
+                       capture_output=True, text=True)
+    if r.returncode != 0:
+        return ("", "")
+    try:
+        d = json.loads(r.stdout.strip() or "{}")
+    except json.JSONDecodeError:
+        return ("", "")
+    if isinstance(d, list):
+        d = d[0] if d else {}
+    return ((d.get("type") or "").strip(),
+            (d.get("AXLabel") or d.get("title") or d.get("AXValue") or "").strip())
+
+
 def describe_point(udid, x, y):
     """What is at this screen point? Returns the AXLabel, or ''. """
     r = subprocess.run(["idb", "ui", "describe-point", "--udid", udid,
@@ -219,13 +238,13 @@ def main():
     # accessible label to find it rather than guessing a coordinate.
     app = next((e for e in els if e.get("type") == "Application"), None)
     width = ((app or {}).get("frame") or {}).get("width", 402)
-    for y in range(60, 260, 20):
+    for y in range(50, 320, 15):
         # NB: do not name this `label`. That shadows the module-level label() function for the
         # whole of main(), and the earlier label(b) call then dies with UnboundLocalError.
-        lab = describe_point(udid, width / 2, y)
-        if lab:
-            print(f"    top probe y={y}: {lab!r}")
-        if lab and "search" in lab.lower():
+        typ, lab = describe_point_full(udid, width / 2, y)
+        if typ or lab:
+            print(f"    top probe y={y}: type={typ!r} label={lab!r}")
+        if typ in ("TextField", "SearchField", "SecureTextField") or (lab and "search" in lab.lower()):
             print(f"  tapping search field at (({width/2}, {y}))")
             subprocess.run(["idb", "ui", "tap", "--udid", udid,
                             str(int(width / 2)), str(y)], capture_output=True, text=True)
