@@ -212,6 +212,25 @@ def main():
     if f is not None:
         tap(udid, f)
         describe(udid, outdir, "search-active")
+        return 0
+
+    # The search field is not in the flat dump on this screen, exactly as on Android where the
+    # field is not a text-entry node until focused. Probe down the top of the screen by
+    # accessible label to find it rather than guessing a coordinate.
+    app = next((e for e in els if e.get("type") == "Application"), None)
+    width = ((app or {}).get("frame") or {}).get("width", 402)
+    for y in range(60, 260, 20):
+        label = describe_point(udid, width / 2, y)
+        if label:
+            print(f"    top probe y={y}: {label!r}")
+        if label and "search" in label.lower():
+            print(f"  tapping search field at (({width/2}, {y}))")
+            subprocess.run(["idb", "ui", "tap", "--udid", udid,
+                            str(int(width / 2)), str(y)], capture_output=True, text=True)
+            time.sleep(3)
+            describe(udid, outdir, "search-active")
+            return 0
+    print("  search field not found by probing; search dump captured without focus")
     return 0
 
 
