@@ -94,6 +94,11 @@ jobs:
           xcrun simctl launch "${{ steps.sim.outputs.udid }}" "$BID"
           sleep 25
 
+      - name: Python 3.10 for idb
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
       - name: Install idb
         env:
           # Homebrew now refuses formulae from third-party taps unless the tap is allow-listed:
@@ -102,8 +107,13 @@ jobs:
         run: |
           brew tap facebook/fb
           brew install facebook/fb/idb-companion
-          python3 -m pip install --break-system-packages --upgrade fb-idb
+          # fb-idb calls asyncio.get_event_loop(), which stopped implicitly creating a loop
+          # in Python 3.12. On the runner's default Python it dies with
+          # "There is no current event loop in thread 'MainThread'", so install it under 3.10.
+          python -m pip install --upgrade pip
+          python -m pip install fb-idb
           idb --help > /dev/null && echo "idb available"
+          python -c "import sys; print('idb python', sys.version)"
 
       - name: Capture accessibility trees
         run: python3 harness4genui/ios/capture_ios.py "${{ steps.sim.outputs.udid }}" out
