@@ -119,6 +119,22 @@ jobs:
       - name: Capture accessibility trees
         run: python3 harness4genui/ios/capture_ios.py "${{ steps.sim.outputs.udid }}" out "$BID"
 
+      - name: Crash diagnostics
+        if: always()
+        run: |
+          # simctl launch returns a PID and exit 0 even when the app dies immediately after,
+          # so a successful launch tells us nothing. Go and read why it died.
+          mkdir -p out
+          echo "=== recent app log ==="
+          xcrun simctl spawn "${{ steps.sim.outputs.udid }}" log show --style compact             --last 5m --predicate 'processImagePath CONTAINS "Wikipedia"' 2>/dev/null             | tail -80 | tee out/app-log.txt || echo "(no log)"
+          echo "=== crash reports ==="
+          CR=~/Library/Logs/DiagnosticReports
+          ls -t "$CR" 2>/dev/null | head -20 || echo "(none)"
+          for f in $(ls -t "$CR"/*.ips 2>/dev/null | head -3); do
+            echo "--- $f"
+            head -60 "$f" | tee -a out/crash.txt
+          done
+
       - name: Upload
         if: always()
         uses: actions/upload-artifact@v4
