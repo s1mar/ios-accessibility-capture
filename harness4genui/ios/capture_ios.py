@@ -67,27 +67,53 @@ def tap(udid, el):
     time.sleep(3)
 
 
-def relaunch(udid, bundle_id):
-    """Bring the app to the foreground and wait for a real tree.
+def frontmost(udid):
+    """Return the AXLabel of the frontmost Application element, or None."""
+    r = subprocess.run(["idb", "ui", "describe-all", "--udid", udid, "--json"],
+                       capture_output=True, text=True)
+    if r.returncode != 0:
+        return None
+    out = r.stdout.strip()
+    try:
+        els = json.loads(out)
+        if isinstance(els, dict):
+            els = [els]
+    except json.JSONDecodeError:
+        els = [json.loads(l) for l in out.splitlines() if l.strip().startswith("{")]
+    for e in els:
+        if e.get("type") == "Application":
+            return (e.get("AXLabel") or "").strip()
+    return None
 
-    idb describes the FRONTMOST application. Several minutes elapse between the workflow's
-    launch step and this one while Homebrew and Python install, by which point the app is no
-    longer foreground and describe-all returns a single empty node. So relaunch here, and poll
-    until the tree is actually populated rather than trusting a fixed sleep.
+
+def relaunch(udid, bundle_id, want="Wikipedia"):
+    """Foreground the app and wait until IT, not something else, is frontmost.
+
+    An earlier version polled only on node count. The app failed to foreground, the poll
+    accepted the iOS home screen as a populated tree, the navigation step then matched the
+    home-screen Search slider, and the run captured Spotlight. Checking identity rather than
+    size is the difference between data and garbage.
     """
     subprocess.run(["xcrun", "simctl", "terminate", udid, bundle_id],
                    capture_output=True, text=True)
     time.sleep(2)
-    subprocess.run(["xcrun", "simctl", "launch", udid, bundle_id],
-                   capture_output=True, text=True)
-    for attempt in range(20):
+    r = subprocess.run(["xcrun", "simctl", "launch", udid, bundle_id],
+                       capture_output=True, text=True)
+    print(f"  launch rc={r.returncode} out={r.stdout.strip()[:120]} err={r.stderr.strip()[:160]}")
+
+    for attempt in range(24):
         time.sleep(5)
-        r = subprocess.run(["idb", "ui", "describe-all", "--udid", udid, "--json"],
-                           capture_output=True, text=True)
-        n = r.stdout.count('"AXFrame"')
-        print(f"  wait {attempt}: {n} nodes")
-        if n > 1:
+        app = frontmost(udid)
+        print(f"  wait {attempt}: frontmost={app!r}")
+        if app and want.lower() in app.lower():
             return True
+        # If the app died, say so loudly rather than capturing whatever is on screen.
+        chk = subprocess.run(["xcrun", "simctl", "spawn", udid, "launchctl", "list"],
+                             capture_output=True, text=True)
+        if bundle_id not in chk.stdout and attempt >= 3:
+            print(f"  {bundle_id} is not in launchctl list; relaunching")
+            subprocess.run(["xcrun", "simctl", "launch", udid, bundle_id],
+                           capture_output=True, text=True)
     return False
 
 
@@ -97,8 +123,9 @@ def main():
     Path(outdir).mkdir(parents=True, exist_ok=True)
 
     if not relaunch(udid, bundle_id):
-        print("  app never produced a populated accessibility tree")
-        describe(udid, outdir, "launch")
+        print("  FAILED: the Wikipedia app never became frontmost. Dumping whatever is on")
+        print("  screen for diagnosis ONLY; it is not the app and must not be used as data.")
+        describe(udid, outdir, "NOT-THE-APP-diagnostic")
         return 1
 
     els = describe(udid, outdir, "launch")
