@@ -27,6 +27,16 @@ jobs:
           xcodebuild -version
           xcrun simctl list runtimes
 
+      - name: Generate the open-source build configuration
+        working-directory: wikipedia-ios
+        run: |
+          # wikipedia-ios does not commit Configurations/OpenSourceDebug.xcconfig; it is
+          # generated. Without this the build fails with "Unable to open base configuration
+          # reference file". The "ci" argument writes the file with the default team id and
+          # skips the interactive team-selection prompt.
+          scripts/setup_bundle_id ci
+          cat Configurations/OpenSourceDebug.xcconfig
+
       - name: List schemes
         working-directory: wikipedia-ios
         run: xcodebuild -list -project Wikipedia.xcodeproj
