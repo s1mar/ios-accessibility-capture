@@ -22,6 +22,16 @@ jobs:
           repository: wikimedia/wikipedia-ios
           path: wikipedia-ios
 
+      - name: Select the newest Xcode
+        run: |
+          # The runner defaults to Xcode 16.4, but wikipedia-ios main uses iOS 26 "Liquid
+          # Glass" APIs (glassEffect, .glassProminent, UIButton.Configuration.glass), which
+          # 16.4 cannot compile. Pick the highest Xcode 26 present.
+          NEWEST=$(ls -d /Applications/Xcode_26*.app 2>/dev/null | sort -V | tail -1)
+          echo "selecting $NEWEST"
+          sudo xcode-select -s "$NEWEST/Contents/Developer"
+          xcodebuild -version
+
       - name: Environment
         run: |
           xcodebuild -version
